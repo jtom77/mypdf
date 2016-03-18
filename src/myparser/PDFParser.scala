@@ -47,11 +47,12 @@ class PDFParser(path: String) {
 
   /**
     * Parse a pdf name.
+    *
     * @param c The first character of the name content (the '/' is already consumed)
     * @return the pdf name as String
     */
   def parseName(c: Byte): String = {
-    if(c.toChar == '(') {
+    if (c.toChar == '(') {
       return parseString(c)
     }
     var b = c
@@ -67,6 +68,7 @@ class PDFParser(path: String) {
 
   /**
     * Parse a PDF String
+    *
     * @param c the opening delimiter, either '(' or '<'
     * @return
     */
@@ -124,18 +126,16 @@ class PDFParser(path: String) {
       nextToken()
     } else if (b.toChar == '<') {
       val c = buf.read()
-      if (c == '<') {
-        "<<"
-      } else {
-        buf.rewind()
+      if (c == '<') "<<"
+      else {
+        buf.rewind();
         parseString(b)
       }
     } else if (b.toChar == '>') {
       val c = buf.read()
-      if (c == '>') {
-        ">>"
-      } else {
-        buf.rewind()
+      if (c == '>') ">>"
+      else {
+        buf.rewind();
         ">"
       }
     } else if (isDigit(b) || b == 0x2d) {
@@ -155,12 +155,12 @@ class PDFParser(path: String) {
       parseDict()
     } else if (tok.equals("/")) {
       new PDFName(parseName(buf.read()))
-    } else if(tok.equals("(")) {
+    } else if (tok.equals("(")) {
       new PDFString(parseString('('.toByte))
     } else if (tok.equals(">>") || tok.equals("]")) {
       null
     } else tok match {
-      case String =>
+      case _: String =>
         new PDFString(tok.toString)
       case num: Long =>
         val position = buf.position
@@ -216,15 +216,15 @@ class PDFParser(path: String) {
     throw new Exception("No Trailer found")
   }
 
-  def findXref() : Long = {
+  def findXref(): Long = {
     buf.gotoEnd()
-    while(true) {
+    while (true) {
       buf.rewind()
       val b = buf.seek()
-      if(b.toChar == 's') {
+      if (b.toChar == 's') {
         val position = buf.position
         buf.read()
-        if(parseName('s').equals("startxref")) {
+        if (parseName('s').equals("startxref")) {
           return nextToken().asInstanceOf[Long]
         } else {
           buf.goto(position)
@@ -241,14 +241,13 @@ class PDFParser(path: String) {
     next = nextToken()
     val size = next.asInstanceOf[Long].toInt
     val result = new Array[Long](size)
-    for (i <- 0 until size) {
+    Range(0, size).foreach(i => {
       result(i) = nextToken().asInstanceOf[Long]
       nextToken()
       nextToken()
-    }
+    })
     result
   }
-
 
   def getContent: Array[Byte] = {
     val dict = parseObject()
@@ -261,9 +260,9 @@ class PDFParser(path: String) {
     val bytes = new Array[Byte](length.toInt.toInt)
     buf.read(bytes)
     val filter = dict.get("Filter")
-    if(filter == null) {
+    if (filter == null) {
       return bytes
-    } else if(!"FlateDecode".equals(filter.value())) {
+    } else if (!"FlateDecode".equals(filter.value())) {
       throw new Exception("Cannot handle decoding: " + filter.toString)
     }
     val inflater = new Inflater()
