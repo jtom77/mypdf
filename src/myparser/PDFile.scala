@@ -8,19 +8,51 @@ import java.io.{File, RandomAccessFile}
 class PDFile(path : String) {
 
   val parser = new PDFParser(path)
-  val trailer = parser.findTrailer()
-  val xref = parser.parseXref()
-  val catalog = dereference(trailer.get("Root"))
+  parser.goto(parser.findXref())
+  val (xrefTable, root) = createXref()
+  val catalog = dereference(root)
   val pagesRoot = dereference(catalog.get("Pages"))
   val numberOfPages = pagesRoot.get("Count").toInt.toInt
 
+  /**
+    * Creates the xref table and the pages root object.
+    * The position of the parser at the beginning is at the keyword 'xref'
+    * @return the xref table and the pages root object
+    */
+  def createXref() : (Map[Int,Long], PDFObject) = {
+    parser.nextToken() // consume 'xref'
+    var xrefTable = Map[Int,Long]()
+    val start = parser.nextToken().asInstanceOf[Long].toInt
+    val length = parser.nextToken().asInstanceOf[Long].toInt
+    Range(start, start+length).foreach(i => {
+      xrefTable += (i -> parser.nextToken().asInstanceOf[Long])
+      parser.nextToken()
+      parser.nextToken()
+    })
+    if(!("trailer".equals(parser.nextToken().asInstanceOf[String]))) {
+      throw new Exception("Keyword 'trailer' expected")
+    }
+    val trailer = parser.parseObject().asInstanceOf[PDFDict]
+    var rootRef = trailer.get("Root")
+    val prev = trailer.get("Prev")
+    if(prev != null) {
+      parser.goto(prev.asInstanceOf[PDFInteger].value.asInstanceOf[Long])
+      val (newXref, rootObject) = createXref()
+      newXref.foreach(i => xrefTable += i)
+      if(rootRef == null) {
+        rootRef = rootObject
+      }
+    }
+    return (xrefTable, rootRef)
+  }
+
   def getObject(ref: PDFRef): PDFObject = {
-    parser.goto(xref(ref.id))
+    parser.goto(xrefTable(ref.id))
     return parser.parseObject()
   }
 
   def getObject(id: Int): PDFObject = {
-    parser.goto(xref(id))
+    parser.goto(xrefTable(id))
     return parser.parseObject()
   }
 
@@ -28,6 +60,12 @@ class PDFile(path : String) {
     case PDFRef(id, rev) => dereference(getObject(id))
     case _ => obj
   }
+
+  def getStreamContent(streamRef : PDFRef) : Array[Byte] = {
+    parser.goto(xrefTable(streamRef.id))
+    return parser.getContent
+  }
+
 
   def getPage(page: Int): PDFPage = {
 
@@ -61,17 +99,27 @@ class PDFPage(file_ : PDFile, obj_ : PDFObject) {
 
   val file = file_
   val obj = obj_
-  val fontMap = Map[String, PDFFont]()
+  var fontMap = Map[String, PDFFont]()
 
   def getContent(): Array[Byte] = {
-    val streamRef = obj.get("Contents").asInstanceOf[PDFRef]
-    file.parser.goto(file.xref(streamRef.id))
-    return file.parser.getContent
+    def getReferencedContent(streamRef : PDFRef): Array[Byte] = {
+      file.parser.goto(file.xrefTable(streamRef.id))
+      return file.parser.getContent
+    }
+    val contents = obj.get("Contents")
+    val content : Array[Byte] = contents match {
+      case PDFRef(id, rev) =>
+        val streamRef = obj.get("Contents").asInstanceOf[PDFRef]
+        return getReferencedContent(streamRef)
+      case PDFList() => throw new Exception("Listed 'content' not yet implemented")
+    }
+    return null
   }
 
   def registerFonts(): Unit = {
     val resources = file.dereference(obj.get("Resources"))
     val fonts = resources.get("Font").asInstanceOf[PDFDict]
+    fonts.map.keys.foreach(f => fontMap += (f -> new PDFFont(file,file.dereference(fonts.map(f).asInstanceOf[PDFRef]))))
   }
 
   def printContent(): Unit = {
@@ -80,17 +128,7 @@ class PDFPage(file_ : PDFile, obj_ : PDFObject) {
 }
 
 
-class PDFFont(file_ : PDFile, obj_ : PDFObject) {
 
-  var file = file_
-  var obj = obj_
-
-  def getContent(): Array[Byte] = {
-    val streamRef = obj.get("FontDescriptor").asInstanceOf[PDFRef]
-    file.parser.goto(file.xref(streamRef.id))
-    return file.parser.getContent
-  }
-}
 
 
 class DataBuffer(path : String) {
@@ -116,6 +154,10 @@ class DataBuffer(path : String) {
     return n.toByte
   }
 
+  def gotoEnd() : Unit = {
+    goto(ra.length())
+  }
+
   def goto(_position : Long): Unit = {
     position = _position
     ra.seek(position)
@@ -131,14 +173,16 @@ class DataBuffer(path : String) {
   }
 }
 
-
-
-
 object Main {
-
-
   def main(args : Array[String]): Unit = {
-    var file = new PDFile("C:/Users/thomase/Documents/samplepdf/begraben.pdf")
-    file.getPage(9).printContent()
+    var file = new PDFile("C:\\Users\\thomase\\Desktop\\gui\\doc1.pdf")
+    // var file = new PDFile("C:\\Users\\thomase\\Documents\\samplepdf\\preisliste\\d2.pdf")
+    val page = file.getPage(0)
+    // page.printContent()
+    page.registerFonts()
+    page.fontMap.keys.foreach(i => {
+      val font = page.fontMap(i)
+      font.toFile("C:/Users/thomase/font/" + i.toString + ".ttf")
+    })
   }
 }

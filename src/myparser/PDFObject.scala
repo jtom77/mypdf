@@ -7,7 +7,7 @@ import java.util.NoSuchElementException
   */
 abstract class PDFObject {
 
-  def toInt(): Long = this match {
+  def toInt: Long = this match {
     case PDFInteger(n) => n
     case _ => sys.error("no Integer")
   }
@@ -18,14 +18,14 @@ abstract class PDFObject {
     case PDFString(va) => va
     case PDFBoolean(va) => va
     case PDFName(va) => va
-    case _ => sys.error("No value for type: " + getClass)
+    case _ => sys.error("No value for type: " + this + "[getClass]")
   }
 
   def get(key: String): PDFObject = this match {
     case PDFDict() => try {
       asInstanceOf[PDFDict].map(key)
     } catch {
-      case _ => null
+      case _: Throwable => null
     }
     case _ => sys.error("not a dictionary")
   }
@@ -35,12 +35,12 @@ abstract class PDFObject {
     case _ => sys.error("Not a list")
   }
 
-  def print: Unit = {
+  def print(): Unit = {
     println(this)
   }
 }
 
-case class PDFInteger(value_ : Long) extends PDFObject{
+case class PDFInteger(value_ : Long) extends PDFObject {
 }
 
 case class PDFDouble(value_ : Double) extends PDFObject {
@@ -57,17 +57,22 @@ case class PDFName(value_ : Any) extends PDFObject {
 
 case class PDFDict() extends PDFObject {
   var map = collection.mutable.Map[String, PDFObject]()
+
   def update(pDFName: String, pDFObject: PDFObject): Unit = {
     map(pDFName) = pDFObject
   }
-  override def print(): Unit = {
-    map.keys.foreach(i => println(i + " " + map(i)))
+
+  override def toString: String = {
+    val buf = new StringBuilder()
+    map.keys.foreach(i => buf.append(i + " " + map(i)))
+    buf.toString
   }
 }
 
 case class PDFList() extends PDFObject {
   var list: List[PDFObject] = List()
-  def +(obj : PDFObject): Unit = {
+
+  def +(obj: PDFObject): Unit = {
     list = list :+ obj
   }
 }
