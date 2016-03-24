@@ -74,15 +74,15 @@ class PDFParser(path: String) {
     */
   def parseString(c: Byte): String = {
     val end = if (c == 0x28) 0x29 else 0x3e
-    var cnt = 1
+    var balance = 1
     var b = buf.read()
     val strBuffer = new StringBuilder
     while (true) {
       if (b == c) {
-        cnt += 1
+        balance += 1
       } else if (b == end) {
-        cnt -= 1
-        if (cnt == 0) {
+        balance -= 1
+        if (balance == 0) {
           return strBuffer.toString()
         }
       } else {
@@ -150,34 +150,43 @@ class PDFParser(path: String) {
   def parseObject(): PDFObject = {
     val tok = nextToken()
     if (tok.equals("[")) {
-      parseList()
+      return parseList()
     } else if (tok.equals("<<")) {
-      parseDict()
+      val dict = parseDict()
+      val position = buf.position
+      if(nextToken().equals("stream")) {
+        skipWhiteSpace()
+        return new PDFStream(dict, buf.position, buf)
+      } else {
+        goto(position)
+        return dict
+      }
     } else if (tok.equals("/")) {
-      new PDFName(parseName(buf.read()))
+      return new PDFName(parseName(buf.read()))
     } else if (tok.equals("(")) {
-      new PDFString(parseString('('.toByte))
+      return new PDFString(parseString('('.toByte))
     } else if (tok.equals(">>") || tok.equals("]")) {
-      null
+      return null
     } else tok match {
       case _: String =>
-        new PDFString(tok.toString)
+        return new PDFString(tok.toString)
       case num: Long =>
         val position = buf.position
-        nextToken() match {
+        val tok2 = nextToken()
+        tok2 match {
           case l: Long =>
-            val next = nextToken()
-            if (next.equals("R")) {
-              PDFRef(num.toInt, l.toInt)
-            } else if (next.equals("obj")) {
+            val tok3 = nextToken()
+            if (tok3.equals("R")) {
+              return PDFRef(num.toInt, l.toInt)
+            } else if (tok3.equals("obj")) {
               return parseObject()
             }
-          case _ =>
+          case _ => new Exception("Syntax Error: 'R' or 'obj' expected")
         }
         buf.goto(position)
-        new PDFInteger(num)
+        return new PDFInteger(num)
       case _ =>
-        null
+        return null
     }
   }
 
@@ -196,27 +205,13 @@ class PDFParser(path: String) {
     var name = parseObject()
     while (name != null) {
       val value = parseObject()
-      // println(name + " ==> " + value)
       dict.update(name.value().toString, value)
       name = parseObject()
     }
-    dict
+    return dict
   }
 
-  def findTrailer(): PDFDict = {
-    var b = buf.read()
-    while (true) {
-      if (b.toChar == 't') {
-        val str = parseName(b)
-        if (str.equals("trailer"))
-          return parseObject().asInstanceOf[PDFDict]
-      }
-      b = buf.read()
-    }
-    throw new Exception("No Trailer found")
-  }
-
-  def findXref(): Long = {
+  def findFirstXref(): Long = {
     buf.gotoEnd()
     while (true) {
       buf.rewind()
@@ -232,21 +227,6 @@ class PDFParser(path: String) {
       }
     }
     throw new Exception("No Trailer found")
-  }
-
-  def parseXref(): Array[Long] = {
-    buf.goto(findXref())
-    var next = nextToken()
-    next = nextToken()
-    next = nextToken()
-    val size = next.asInstanceOf[Long].toInt
-    val result = new Array[Long](size)
-    Range(0, size).foreach(i => {
-      result(i) = nextToken().asInstanceOf[Long]
-      nextToken()
-      nextToken()
-    })
-    result
   }
 
   def getContent: Array[Byte] = {

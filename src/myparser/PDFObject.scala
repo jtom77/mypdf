@@ -1,6 +1,7 @@
 package myparser
 
 import java.util.NoSuchElementException
+import java.util.zip.Inflater
 
 /**
   * Created by ThomasE on 22.02.2016.
@@ -27,7 +28,7 @@ abstract class PDFObject {
     } catch {
       case _: Throwable => null
     }
-    case _ => sys.error("not a dictionary")
+    case _ => sys.error("not a dictionary " + this )
   }
 
   def get(index: Int): PDFObject = this match {
@@ -35,13 +36,16 @@ abstract class PDFObject {
     case _ => sys.error("Not a list")
   }
 
+  def isStreamObject(): Boolean = {
+    return isInstanceOf[PDFDict] && asInstanceOf[PDFDict].get("Length") != null
+  }
+
   def print(): Unit = {
     println(this)
   }
 }
 
-case class PDFInteger(value_ : Long) extends PDFObject {
-}
+case class PDFInteger(value_ : Long) extends PDFObject {}
 
 case class PDFDouble(value_ : Double) extends PDFObject {
 }
@@ -49,11 +53,9 @@ case class PDFDouble(value_ : Double) extends PDFObject {
 case class PDFString(value_ : String) extends PDFObject {
 }
 
-case class PDFBoolean(value_ : String) extends PDFObject {
-}
+case class PDFBoolean(value_ : String) extends PDFObject {}
 
-case class PDFName(value_ : Any) extends PDFObject {
-}
+case class PDFName(value_ : Any) extends PDFObject {}
 
 case class PDFDict() extends PDFObject {
   var map = collection.mutable.Map[String, PDFObject]()
@@ -81,5 +83,40 @@ case class PDFRef(id_ : Int, rev_ : Int) extends PDFObject {
   val id = id_
   val rev = rev_
 }
+
+case class PDFStream(dict : PDFDict, position: Long, buf: DataBuffer) extends PDFObject {
+
+  override def get(key : String): PDFObject = {
+    return dict.get(key)
+  }
+
+  def getContent: Array[Byte] = {
+    val length = dict.get("Length")
+    val bytes = new Array[Byte](length.toInt.toInt)
+    buf.read(bytes)
+    val filter = dict.get("Filter")
+    if (filter == null) {
+      return bytes
+    } else if (!"FlateDecode".equals(filter.value())) {
+      throw new Exception("Cannot handle decoding: " + filter.toString)
+    }
+    val inflater = new Inflater()
+    inflater.setInput(bytes)
+    val size = 1024
+    var deflated = size
+    var content = new Array[Byte](0)
+    while (size == deflated) {
+      val b = new Array[Byte](size)
+      deflated = inflater.inflate(b)
+      val newContent = new Array[Byte](content.length + deflated)
+      System.arraycopy(content, 0, newContent, 0, content.length)
+      System.arraycopy(b, 0, newContent, content.length, deflated)
+      content = newContent
+    }
+    content
+  }
+}
+
+
 
 
