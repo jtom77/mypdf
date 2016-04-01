@@ -5,9 +5,9 @@ import java.util.zip.Inflater
 /**
   * Created by ThomasE on 22.02.2016.
   */
-class PDFParser(path: String) {
+class PDFParser(buf_ : DataBuffer) {
 
-  val buf = new DataBuffer(path)
+  var buf = buf_;
 
   def goto(position: Long): Unit = {
     buf.goto(position)

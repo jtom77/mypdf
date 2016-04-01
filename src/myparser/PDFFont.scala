@@ -3,18 +3,18 @@ package myparser
 import java.io.{BufferedOutputStream, FileOutputStream}
 
 object PDFFontFactory {
-  def createFont(file_ : PDFile, fontDict_ : PDFObject): PDFFont ={
+  def createFont(file_ : PDFile, fontDict_ : PDFObject): PDFFont = {
     val typ = fontDict_.get("Subtype").value()
-    if(typ.equals("Type0")) {
+    if (typ.equals("Type0")) {
       return new Type0Font(file_, fontDict_)
     }
-    if(typ.equals("Type1")) {
+    if (typ.equals("Type1")) {
       return new Type0Font(file_, fontDict_)
     }
-    if(typ.equals("Type3")) {
+    if (typ.equals("Type3")) {
       return new Type3Font(file_, fontDict_)
     }
-    if(typ.equals("TrueType")) {
+    if (typ.equals("TrueType")) {
       return new TrueTypeFont(file_, fontDict_)
     }
     throw new Exception("Unknown font type: " + typ)
@@ -31,6 +31,7 @@ class PDFFont(file_ : PDFile, fontDict_ : PDFObject) {
 
   var file = file_
   var fontDict = fontDict_
+  val ucMap = getUnicodeMap();
 
   /**
     * Get the font program as a stream of bytes
@@ -49,12 +50,63 @@ class PDFFont(file_ : PDFile, fontDict_ : PDFObject) {
     if (content == null) {
       return null
     }
+
     return file.getStreamContent(content.asInstanceOf[PDFRef])
   }
 
 
-  def getUnicodeMap(): PDFObject = {
-    return file.dereference(fontDict.get("ToUnicode"))
+  def getUnicodeMap(): Map[Int,Int] = {
+    val umap = file.dereference(fontDict.get("ToUnicode"))
+    if (umap == null || !umap.isInstanceOf[PDFStream]) {
+      return null
+    }
+    var ucMap = Map[Int, Int]()
+    val content = umap.asInstanceOf[PDFStream].getContent
+    content.foreach(b => print(b.toChar))
+    val parser = new PDFParser(new ByteDataBuffer(content))
+    var tok = parser.nextToken();
+
+    def parseHex(): Int = {
+      tok = parser.nextToken()
+      if (tok.equals("endbfchar") || tok.equals("endbfrange")) {
+        return -1
+      }
+      return Integer.parseInt(tok.toString(), 16)
+    }
+    def findKeyWord: String = {
+      while (!("beginbfchar".equals(tok) || "beginbfrange".equals(tok) || "endcmap".equals(tok))) {
+        tok = parser.nextToken()
+      }
+      return tok.toString
+    }
+
+    def parseCharEntry(): Unit = {
+      var key = parseHex()
+      while (key != -1) {
+        ucMap += (key -> parseHex())
+        key = parseHex()
+      }
+    }
+
+    def parseRangeEntry(): Unit = {
+      var start = parseHex()
+      while (start != -1) {
+        val end = parseHex()
+        val value = parseHex()
+        Range(start, end).foreach(i => ucMap += (i -> value))
+      }
+    }
+
+    var keyWord: String = null;
+    while (!(keyWord = findKeyWord).equals("endcmap")) {
+      if ("beginbfchar".equals(keyWord)) {
+        println("========> " + tok)
+        parseCharEntry()
+      } else {
+        parseRangeEntry()
+      }
+    }
+    return ucMap
   }
 
   /**
@@ -92,7 +144,7 @@ class Type0Font(file_ : PDFile, fontDict_ : PDFObject) extends PDFFont(file_, fo
   val descendendantFonts = file.dereference(fontDict_.get("DescendantFonts")).asInstanceOf[PDFList].list.map(x => new CIDFont(file_, file_.dereference(x)))
 
   override def getContent(): Array[Byte] = {
-    return descendendantFonts.map(i => i.getContent()).reduceLeft((a,b) => {
+    return descendendantFonts.map(i => i.getContent()).reduceLeft((a, b) => {
       val c = new Array[Byte](a.length + b.length)
       System.arraycopy(a, 0, c, 0, a.length)
       System.arraycopy(b, 0, c, a.length, b.length)
@@ -106,10 +158,7 @@ class CIDFont(file_ : PDFile, fontDict_ : PDFObject) extends PDFFont(file_, font
 }
 
 
-class ToUnicodeMap {
-
-
-
+class ToUnicodeMap(pDFParser: PDFParser) {
 
 
 }

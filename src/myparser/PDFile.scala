@@ -7,7 +7,7 @@ import java.io.{File, RandomAccessFile}
   */
 class PDFile(path: String) {
 
-  val parser = new PDFParser(path)
+  val parser = new PDFParser(new FileDataBuffer(path))
   parser.goto(parser.findFirstXref())
   val (xrefTable, root) = createXref()
   val catalog = dereference(root)
@@ -145,47 +145,7 @@ class PDFPage(file_ : PDFile, obj_ : PDFObject) {
 }
 
 
-class DataBuffer(path: String) {
 
-  val ra = new RandomAccessFile(new File(path), "r")
-  var position = 0L;
-
-  def read(): Byte = {
-    val n = ra.read()
-    if (n == -1) {
-      throw new Exception("Reached End of File!")
-    }
-    position += 1
-    return n.toByte
-  }
-
-  def seek(): Byte = {
-    val n = ra.read()
-    if (n == -1) {
-      throw new Exception("Reached End of File!")
-    }
-    ra.seek(position)
-    return n.toByte
-  }
-
-  def gotoEnd(): Unit = {
-    goto(ra.length())
-  }
-
-  def goto(_position: Long): Unit = {
-    position = _position
-    ra.seek(position)
-  }
-
-  def read(bytes: Array[Byte]): Unit = {
-    ra.read(bytes)
-    position += bytes.length
-  }
-
-  def rewind(): Unit = {
-    goto(position - 1)
-  }
-}
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -196,12 +156,8 @@ object Main {
     page.registerFonts()
     page.fontMap.keys.foreach(i => {
       val font = page.fontMap(i)
-      val um = font.getUnicodeMap()
-      if(um != null) {
-        if(um.isInstanceOf[PDFStream]) {
-          um.asInstanceOf[PDFStream].getContent.foreach(b => print(b.toChar))
-        }
-      }
+      val umap = font.getUnicodeMap()
+
     })
   }
 }

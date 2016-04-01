@@ -67,31 +67,27 @@ public class HexToUnicode {
                         break;
                     default:
                         if (hex != null) {
-                            switch (hex.length()) {
+                            switch ( hex.length() ) {
                                 case 0:
                                     hex = hex + c;
                                     break;
                                 case 1:
                                     hex = hex + c;
                                     try {
-                                        Integer key = Integer.parseInt(hex, 16);
-                                        String unicode = hexToUni.get(key);
+                                        Integer key = Integer.parseInt( hex, 16 );
+                                        String unicode = hexToUni.get( key );
                                         hex = "";
-                                        if (unicode != null) {
-                                            buf.append(unicode);
+                                        if ( unicode != null ) {
+                                            buf.append( unicode );
                                         }
-                                    } catch (NumberFormatException e) {
+                                    } catch ( NumberFormatException e ) {
                                         hex = null;
 
                                     }
                             }
                         }
                 }
-
-
-
             }
-
             System.out.println(buf);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -122,7 +118,7 @@ public class HexToUnicode {
     public static void main(String[] args) {
         HexToUnicode decoder = new HexToUnicode();
         decoder.readUnicode();
-        // decoder.printTable();
+        decoder.printTable();
         decoder.decodeString();
     }
 }
